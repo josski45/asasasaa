@@ -1,0 +1,392 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Midtrans Webhook Monitor</title>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=Space+Grotesk:wght@400;500;600;700&display=swap');
+
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        
+        body {
+            font-family: 'Space Grotesk', monospace;
+            background: #e8e4dc;
+            min-height: 100vh;
+            padding: 24px;
+        }
+
+        .container {
+            max-width: 720px;
+            margin: 0 auto;
+        }
+
+        /* === NEOBRUTALISM CARD === */
+        .card {
+            background: #fff;
+            border: 3px solid #1a1a1a;
+            border-radius: 12px;
+            box-shadow: 6px 6px 0 #1a1a1a;
+            padding: 28px;
+            margin-bottom: 20px;
+            transition: transform 0.1s, box-shadow 0.1s;
+        }
+        .card:hover {
+            transform: translate(-2px, -2px);
+            box-shadow: 8px 8px 0 #1a1a1a;
+        }
+
+        /* === HEADER === */
+        .header {
+            background: #4361ee;
+            color: #fff;
+            text-align: center;
+            padding: 32px 28px;
+        }
+        .header h1 {
+            font-family: 'Space Mono', monospace;
+            font-size: 28px;
+            font-weight: 700;
+            letter-spacing: -1px;
+        }
+        .header p {
+            margin-top: 8px;
+            font-size: 14px;
+            opacity: 0.85;
+        }
+
+        /* === STATUS BADGE === */
+        .status-row {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin-bottom: 16px;
+        }
+        .badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            padding: 8px 16px;
+            border: 2.5px solid #1a1a1a;
+            border-radius: 50px;
+            font-weight: 700;
+            font-size: 14px;
+            box-shadow: 3px 3px 0 #1a1a1a;
+        }
+        .badge.online { background: #a7f3d0; color: #065f46; }
+        .badge.offline { background: #fecaca; color: #991b1b; }
+        .badge.checking { background: #fef08a; color: #854d0e; }
+        .dot {
+            width: 10px; height: 10px;
+            border-radius: 50%;
+            display: inline-block;
+        }
+        .dot.green { background: #10b981; animation: pulse 1.5s infinite; }
+        .dot.red { background: #ef4444; }
+        .dot.yellow { background: #f59e0b; animation: pulse 0.8s infinite; }
+
+        @keyframes pulse {
+            0%, 100% { opacity: 1; transform: scale(1); }
+            50% { opacity: 0.5; transform: scale(0.8); }
+        }
+
+        /* === INFO GRID === */
+        .info-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 12px;
+            margin-top: 16px;
+        }
+        .info-item {
+            background: #f3f4f6;
+            border: 2px solid #1a1a1a;
+            border-radius: 8px;
+            padding: 14px;
+        }
+        .info-item.full { grid-column: 1 / -1; }
+        .info-label {
+            font-size: 11px;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            color: #6b7280;
+            margin-bottom: 4px;
+        }
+        .info-value {
+            font-family: 'Space Mono', monospace;
+            font-size: 14px;
+            font-weight: 700;
+            word-break: break-all;
+        }
+
+        /* === ENDPOINT TABLE === */
+        .endpoint-table {
+            width: 100%;
+            border-collapse: separate;
+            border-spacing: 0;
+            margin-top: 12px;
+        }
+        .endpoint-table th {
+            background: #1a1a1a;
+            color: #fff;
+            padding: 10px 14px;
+            text-align: left;
+            font-size: 12px;
+            letter-spacing: 1px;
+            text-transform: uppercase;
+        }
+        .endpoint-table th:first-child { border-radius: 8px 0 0 0; }
+        .endpoint-table th:last-child { border-radius: 0 8px 0 0; }
+        .endpoint-table td {
+            padding: 10px 14px;
+            border-bottom: 2px solid #e5e7eb;
+            font-size: 13px;
+        }
+        .endpoint-table tr:last-child td:first-child { border-radius: 0 0 0 8px; }
+        .endpoint-table tr:last-child td:last-child { border-radius: 0 0 8px 0; }
+        .method-badge {
+            display: inline-block;
+            padding: 2px 10px;
+            border: 2px solid #1a1a1a;
+            border-radius: 4px;
+            font-family: 'Space Mono', monospace;
+            font-size: 12px;
+            font-weight: 700;
+        }
+        .method-get { background: #bbf7d0; }
+        .method-post { background: #bfdbfe; }
+        .path-mono { font-family: 'Space Mono', monospace; font-weight: 600; }
+
+        /* === BUTTONS === */
+        .btn {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            padding: 12px 24px;
+            border: 3px solid #1a1a1a;
+            border-radius: 8px;
+            font-family: 'Space Grotesk', sans-serif;
+            font-size: 15px;
+            font-weight: 700;
+            cursor: pointer;
+            box-shadow: 4px 4px 0 #1a1a1a;
+            transition: all 0.1s;
+        }
+        .btn:active {
+            transform: translate(4px, 4px);
+            box-shadow: none;
+        }
+        .btn-primary { background: #4361ee; color: #fff; }
+        .btn-yellow { background: #facc15; color: #1a1a1a; }
+        .btn-row { display: flex; gap: 12px; flex-wrap: wrap; margin-top: 16px; }
+
+        /* === LOG AREA === */
+        .log-area {
+            background: #1a1a1a;
+            color: #4ade80;
+            font-family: 'Space Mono', monospace;
+            font-size: 12px;
+            padding: 16px;
+            border-radius: 8px;
+            max-height: 220px;
+            overflow-y: auto;
+            margin-top: 12px;
+            line-height: 1.8;
+            border: 2px solid #1a1a1a;
+        }
+        .log-area .log-line { white-space: pre-wrap; word-break: break-all; }
+        .log-area .log-time { color: #6b7280; }
+        .log-area .log-ok { color: #4ade80; }
+        .log-area .log-err { color: #f87171; }
+        .log-area .log-warn { color: #facc15; }
+
+        /* === SECTION TITLE === */
+        .section-title {
+            font-size: 18px;
+            font-weight: 700;
+            margin-bottom: 12px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        /* === FOOTER === */
+        .footer {
+            text-align: center;
+            padding: 16px;
+            font-size: 12px;
+            color: #9ca3af;
+        }
+        .footer a { color: #4361ee; text-decoration: none; font-weight: 600; }
+
+        @media (max-width: 520px) {
+            body { padding: 12px; }
+            .header h1 { font-size: 22px; }
+            .info-grid { grid-template-columns: 1fr; }
+            .btn-row { flex-direction: column; }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+
+        <!-- HEADER -->
+        <div class="card header">
+            <h1>⚡ MIDTRANS WEBHOOK</h1>
+            <p>QRIS Payment Gateway Monitor</p>
+        </div>
+
+        <!-- STATUS -->
+        <div class="card">
+            <div class="status-row">
+                <span class="section-title">📡 Server Status</span>
+                <span class="badge checking" id="statusBadge">
+                    <span class="dot yellow" id="statusDot"></span>
+                    <span id="statusText">CHECKING...</span>
+                </span>
+            </div>
+            <div class="info-grid">
+                <div class="info-item">
+                    <div class="info-label">Merchant ID</div>
+                    <div class="info-value" id="merchantId">—</div>
+                </div>
+                <div class="info-item">
+                    <div class="info-label">Last Check</div>
+                    <div class="info-value" id="lastCheck">—</div>
+                </div>
+                <div class="info-item">
+                    <div class="info-label">Response Time</div>
+                    <div class="info-value" id="responseTime">—</div>
+                </div>
+                <div class="info-item">
+                    <div class="info-label">Server Time</div>
+                    <div class="info-value" id="serverTime">—</div>
+                </div>
+                <div class="info-item full">
+                    <div class="info-label">Webhook URL (set di Midtrans Dashboard)</div>
+                    <div class="info-value" id="webhookUrl">—</div>
+                </div>
+            </div>
+            <div class="btn-row">
+                <button class="btn btn-primary" onclick="checkStatus()">🔄 Refresh</button>
+                <button class="btn btn-yellow" onclick="copyUrl()">📋 Copy URL</button>
+            </div>
+        </div>
+
+        <!-- ENDPOINTS -->
+        <div class="card">
+            <div class="section-title">🛣️ Endpoints</div>
+            <table class="endpoint-table">
+                <thead>
+                    <tr><th>Method</th><th>Path</th><th>Fungsi</th></tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td><span class="method-badge method-get">GET</span></td>
+                        <td class="path-mono">/api/midtrans</td>
+                        <td>Health check</td>
+                    </tr>
+                    <tr>
+                        <td><span class="method-badge method-post">POST</span></td>
+                        <td class="path-mono">/api/midtrans</td>
+                        <td>Webhook notification</td>
+                    </tr>
+                    <tr>
+                        <td><span class="method-badge method-post">POST</span></td>
+                        <td class="path-mono">/webhook/midtrans</td>
+                        <td>Alias → /api/midtrans</td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+
+        <!-- LOGS -->
+        <div class="card">
+            <div class="section-title">📜 Activity Log</div>
+            <div class="log-area" id="logArea">
+                <div class="log-line"><span class="log-time">[--:--:--]</span> Waiting for status check...</div>
+            </div>
+        </div>
+
+        <!-- FOOTER -->
+        <div class="footer">
+            Midtrans QRIS Webhook &mdash; Vercel Serverless &mdash; <a href="https://docs.midtrans.com" target="_blank">Docs</a>
+        </div>
+    </div>
+
+    <script>
+        const BASE = window.location.origin;
+        const API_URL = BASE + '/api/midtrans';
+        const WEBHOOK_URL = BASE + '/webhook/midtrans';
+        let checkCount = 0;
+
+        document.getElementById('webhookUrl').textContent = WEBHOOK_URL;
+
+        function log(msg, type = 'ok') {
+            const area = document.getElementById('logArea');
+            const now = new Date().toLocaleTimeString('id-ID');
+            const cls = type === 'err' ? 'log-err' : type === 'warn' ? 'log-warn' : 'log-ok';
+            const line = document.createElement('div');
+            line.className = 'log-line';
+            line.innerHTML = `<span class="log-time">[${now}]</span> <span class="${cls}">${msg}</span>`;
+            area.appendChild(line);
+            area.scrollTop = area.scrollHeight;
+            // Keep max 50 lines
+            while (area.children.length > 50) area.removeChild(area.firstChild);
+        }
+
+        function setStatus(status) {
+            const badge = document.getElementById('statusBadge');
+            const dot = document.getElementById('statusDot');
+            const text = document.getElementById('statusText');
+
+            badge.className = 'badge ' + (status === 'online' ? 'online' : status === 'offline' ? 'offline' : 'checking');
+            dot.className = 'dot ' + (status === 'online' ? 'green' : status === 'offline' ? 'red' : 'yellow');
+            text.textContent = status.toUpperCase();
+        }
+
+        async function checkStatus() {
+            checkCount++;
+            setStatus('checking');
+            log(`#${checkCount} Pinging ${API_URL}...`, 'warn');
+
+            const t0 = performance.now();
+            try {
+                const res = await fetch(API_URL, { cache: 'no-store' });
+                const ms = Math.round(performance.now() - t0);
+                const data = await res.json();
+
+                if (res.ok && data.status === 'OK') {
+                    setStatus('online');
+                    document.getElementById('merchantId').textContent = data.merchant || '—';
+                    document.getElementById('serverTime').textContent = data.time ? new Date(data.time).toLocaleString('id-ID') : '—';
+                    document.getElementById('responseTime').textContent = ms + 'ms';
+                    document.getElementById('lastCheck').textContent = new Date().toLocaleTimeString('id-ID');
+                    log(`✓ Online — ${ms}ms — Merchant: ${data.merchant}`, 'ok');
+                } else {
+                    setStatus('offline');
+                    document.getElementById('responseTime').textContent = ms + 'ms';
+                    log(`✗ HTTP ${res.status} — ${JSON.stringify(data)}`, 'err');
+                }
+            } catch (err) {
+                setStatus('offline');
+                log(`✗ Connection failed: ${err.message}`, 'err');
+            }
+        }
+
+        function copyUrl() {
+            navigator.clipboard.writeText(WEBHOOK_URL).then(() => {
+                log('📋 Webhook URL copied to clipboard', 'ok');
+                const btn = event.target.closest('.btn');
+                const orig = btn.innerHTML;
+                btn.innerHTML = '✅ Copied!';
+                setTimeout(() => btn.innerHTML = orig, 1500);
+            });
+        }
+
+        // Initial check + auto-refresh every 30s
+        checkStatus();
+        setInterval(checkStatus, 30000);
+    </script>
+</body>
+</html>

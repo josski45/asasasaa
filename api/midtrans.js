@@ -1,118 +1,88 @@
 const crypto = require('crypto');
+const https = require('https');
+const http = require('http');
 
-/**
- * Vercel Serverless Function - Midtrans QRIS Webhook Handler
- * 
- * Endpoint: POST /api/midtrans
- * 
- * Flow:
- * 1. Midtrans sends payment notification to this URL
- * 2. Verify SHA512 signature
- * 3. Return 200 (acknowledge receipt)
- * 4. Optionally forward to bot's local webhook (via BOT_CALLBACK_URL)
- * 
- * Bot tetap punya polling sendiri ke Midtrans API sebagai backup,
- * jadi payment tetap terdeteksi meskipun forward gagal.
- */
-module.exports = async (req, res) => {
-    // CORS
+// Simple forward helper (no fetch dependency)
+function forwardRequest(url, body, timeout = 8000) {
+    return new Promise((resolve) => {
+        try {
+            const parsed = new URL(url);
+            const lib = parsed.protocol === 'https:' ? https : http;
+            const data = JSON.stringify(body);
+
+            const req = lib.request({
+                hostname: parsed.hostname,
+                port: parsed.port,
+                path: parsed.pathname + parsed.search,
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(data) },
+                timeout
+            }, (res) => {
+                resolve({ ok: res.statusCode >= 200 && res.statusCode < 300, status: res.statusCode });
+            });
+
+            req.on('error', () => resolve({ ok: false, status: 0 }));
+            req.on('timeout', () => { req.destroy(); resolve({ ok: false, status: 0 }); });
+            req.write(data);
+            req.end();
+        } catch (e) { resolve({ ok: false, status: 0 }); }
+    });
+}
+
+module.exports = async function handler(req, res) {
     res.setHeader('Access-Control-Allow-Origin', '*');
     res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
     res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
 
-    if (req.method === 'OPTIONS') {
-        return res.status(200).end();
-    }
+    if (req.method === 'OPTIONS') return res.status(200).end();
 
-    // GET - Health check
+    // === GET: Health check ===
     if (req.method === 'GET') {
         return res.status(200).json({
             status: 'OK',
-            service: 'Midtrans QRIS Webhook (Vercel)',
-            merchant: process.env.MIDTRANS_MERCHANT_ID || 'not-configured',
-            timestamp: new Date().toISOString()
+            service: 'Midtrans QRIS Webhook',
+            merchant: process.env.MIDTRANS_MERCHANT_ID || 'not-set',
+            time: new Date().toISOString()
         });
     }
 
-    // POST - Midtrans notification handler
+    // === POST: Midtrans notification ===
     if (req.method === 'POST') {
         try {
-            const notification = req.body;
-
-            if (!notification || !notification.order_id) {
-                return res.status(400).json({ error: 'Invalid notification payload' });
-            }
+            const n = req.body || {};
+            if (!n.order_id) return res.status(400).json({ error: 'Missing order_id' });
 
             const serverKey = process.env.MIDTRANS_SERVER_KEY;
-            if (!serverKey) {
-                console.error('MIDTRANS_SERVER_KEY not configured');
-                return res.status(500).json({ error: 'Server configuration error' });
-            }
+            if (!serverKey) return res.status(500).json({ error: 'MIDTRANS_SERVER_KEY not set' });
 
-            const {
-                order_id,
-                status_code,
-                gross_amount,
-                signature_key,
-                transaction_status,
-                payment_type,
-                transaction_id,
-                transaction_time
-            } = notification;
+            // Verify signature
+            if (!n.signature_key) return res.status(403).json({ error: 'No signature' });
 
-            // ========== Signature Verification ==========
-            if (signature_key) {
-                const payload = order_id + status_code + gross_amount + serverKey;
-                const expectedSignature = crypto.createHash('sha512').update(payload).digest('hex');
+            const expected = crypto.createHash('sha512')
+                .update(n.order_id + n.status_code + n.gross_amount + serverKey)
+                .digest('hex');
 
-                if (expectedSignature !== signature_key) {
-                    console.warn(`[WEBHOOK] Invalid signature for order ${order_id}`);
-                    return res.status(403).json({ error: 'Invalid signature' });
-                }
-            } else {
-                console.warn(`[WEBHOOK] No signature_key in notification for ${order_id}`);
-                return res.status(403).json({ error: 'Missing signature' });
-            }
+            if (expected !== n.signature_key) return res.status(403).json({ error: 'Bad signature' });
 
-            // ========== Log notification ==========
-            console.log(`[WEBHOOK] Order: ${order_id} | Status: ${transaction_status} | Amount: Rp${gross_amount} | Type: ${payment_type || 'qris'}`);
+            console.log(`[OK] ${n.order_id} | ${n.transaction_status} | Rp${n.gross_amount}`);
 
-            // ========== Forward to bot (optional) ==========
-            const callbackUrl = process.env.BOT_CALLBACK_URL;
+            // Forward to bot (optional)
             let forwarded = false;
-
-            if (callbackUrl) {
-                try {
-                    const controller = new AbortController();
-                    const timeout = setTimeout(() => controller.abort(), 8000); // 8s timeout
-
-                    const response = await fetch(callbackUrl, {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify(notification),
-                        signal: controller.signal
-                    });
-
-                    clearTimeout(timeout);
-                    forwarded = response.ok;
-                    console.log(`[WEBHOOK] Forward to bot: ${response.status} ${forwarded ? '✓' : '✗'}`);
-                } catch (forwardError) {
-                    console.warn(`[WEBHOOK] Forward failed: ${forwardError.message}`);
-                    // Tidak fatal - bot punya polling sendiri ke Midtrans API
-                }
+            if (process.env.BOT_CALLBACK_URL) {
+                const fwd = await forwardRequest(process.env.BOT_CALLBACK_URL, n);
+                forwarded = fwd.ok;
+                console.log(`[FWD] ${fwd.status} ${forwarded ? 'OK' : 'FAIL'}`);
             }
 
-            // ========== Response to Midtrans ==========
             return res.status(200).json({
                 success: true,
-                message: 'Notification received',
-                order_id,
-                transaction_status,
+                order_id: n.order_id,
+                status: n.transaction_status,
                 forwarded
             });
-        } catch (error) {
-            console.error('[WEBHOOK] Error:', error.message);
-            return res.status(500).json({ error: 'Internal server error' });
+        } catch (err) {
+            console.error('[ERR]', err.message);
+            return res.status(500).json({ error: 'Server error' });
         }
     }
 

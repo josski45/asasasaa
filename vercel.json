@@ -1,5 +1,6 @@
 {
     "rewrites": [
-        { "source": "/webhook/midtrans", "destination": "/api/midtrans" }
+        { "source": "/webhook/midtrans", "destination": "/api/midtrans" },
+        { "source": "/status", "destination": "/api/midtrans" }
     ]
 }
