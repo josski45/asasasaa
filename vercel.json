@@ -1,24 +1,5 @@
 {
-    "$schema": "https://openapi.vercel.sh/vercel.json",
-    "version": 2,
-    "builds": [
-        {
-            "src": "api/**/*.js",
-            "use": "@vercel/node"
-        }
-    ],
-    "routes": [
-        {
-            "src": "/webhook/midtrans",
-            "dest": "/api/midtrans"
-        },
-        {
-            "src": "/api/midtrans",
-            "dest": "/api/midtrans"
-        },
-        {
-            "src": "/(.*)",
-            "dest": "/api/midtrans"
-        }
+    "rewrites": [
+        { "source": "/webhook/midtrans", "destination": "/api/midtrans" }
     ]
 }

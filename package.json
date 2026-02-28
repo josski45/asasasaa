@@ -2,8 +2,5 @@
     "name": "midtrans-webhook",
     "version": "1.0.0",
     "description": "Midtrans QRIS Webhook Handler - Vercel Serverless",
-    "private": true,
-    "engines": {
-        "node": ">=18.0.0"
-    }
+    "private": true
 }
